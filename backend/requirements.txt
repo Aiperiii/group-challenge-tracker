@@ -12,7 +12,6 @@ fastapi==0.140.0
 h11==0.16.0
 httptools==0.8.0
 idna==3.18
-passlib==1.7.4
 psycopg2-binary==2.9.12
 pyasn1==0.6.4
 pycparser==3.0
@@ -20,6 +19,7 @@ pydantic==2.13.4
 pydantic_core==2.46.4
 python-dotenv==1.2.2
 python-jose==3.5.0
+python-multipart==0.0.32
 PyYAML==6.0.3
 rsa==4.9.1
 six==1.17.0
