@@ -11,7 +11,7 @@ class User(Base):
     timezone = Column(String(50), nullable = False, default = "UTC")
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
-class Groups(Base):
+class Group(Base):
     __tablename__ = "groups"
 
     id = Column(Integer, primary_key=True)
