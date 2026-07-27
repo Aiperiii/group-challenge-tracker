@@ -1,5 +1,6 @@
-from pydantic import BaseModel, EmailStr, field_validator
-from datetime import datetime
+from pydantic import BaseModel, EmailStr, field_validator, model_validator
+from typing import Optional
+from datetime import datetime, date
 
 class UserRegister(BaseModel):
     email : EmailStr
@@ -58,3 +59,54 @@ class MemberResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+class ChallengeCreate(BaseModel):
+    name : str
+    description : Optional[str] = None
+    duration_days : int
+    start_date : date
+    check_in_type : str
+    goal_value : Optional[int] = None
+
+    @field_validator("check_in_type")
+    @classmethod
+    def valid_check_in_type(cls, v : str) -> str:
+        allowed = {"boolean", "numeric", "text"}
+        if v not in allowed:
+            raise ValueError(f"check_in_type must be one of the {allowed}")
+        return v
+    
+    @field_validator("duration_days")
+    @classmethod
+    def positive_duration(cls, v : int) -> int:
+        if(v < 1):
+            raise ValueError("duration_days must be positive")
+        return v
+
+    @model_validator(mode = "after")
+    def check_goal_matches_type(self):
+        if self.check_in_type == "numeric" and self.goal_value is None:
+            raise ValueError("numeric challenges require a goal value")
+        if self.check_in_type in {"boolean", "text"} and self.goal_value is not None:
+            raise ValueError("goal_value is only allowed for numeric challenges")
+        return self
+
+class ChallengeResponse(BaseModel):
+    id: int
+    group_id: int
+    name: str
+    description: Optional[str]
+    duration_days: int
+    start_date: date
+    check_in_type: str
+    goal_value: Optional[int]
+    created_by: int
+
+    class Config:
+        from_attributes = True
+
+class ChallengeDetailResponse(BaseModel):
+    challenge: ChallengeResponse
+    members: list[MemberResponse]
+
+

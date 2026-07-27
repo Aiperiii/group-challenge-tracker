@@ -3,8 +3,9 @@ from sqlalchemy.orm import Session
 from fastapi.security import OAuth2PasswordRequestForm
 
 from database import get_db
-from models import User, Group, GroupMember
-from schemas import UserRegister, UserResponse, Token, GroupCreate, GroupResponse, GroupJoin,MemberResponse
+from models import User, Group, GroupMember, Challenge
+from schemas import (UserRegister, UserResponse, Token, GroupCreate, 
+        GroupResponse, GroupJoin,MemberResponse, ChallengeCreate, ChallengeResponse,ChallengeDetailResponse)
 
 from auth import hash_password,verify_password
 from token_utils import create_access_token, get_current_user
@@ -129,3 +130,79 @@ def list_members(group_id : int,
     MemberResponse(user_id=user.id, email=user.email, joined_at=membership.joined_at)
     for membership, user in results
     ]
+
+@app.post("/groups/{group_id}/challenges", response_model=ChallengeResponse)
+def create_challenge(group_id: int, challenge_data: ChallengeCreate,
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)):
+    """Create a challenge inside a group. Only group members can create challenges."""
+
+    # the creator must be a member of the group
+    membership = db.query(GroupMember).filter(
+        GroupMember.group_id == group_id,
+        GroupMember.user_id == current_user.id).first()
+    if membership is None:
+        raise HTTPException(status_code=403, detail="You are not a member of this group")
+
+    new_challenge = Challenge(
+        group_id=group_id,
+        name=challenge_data.name,
+        description=challenge_data.description,
+        duration_days=challenge_data.duration_days,
+        start_date=challenge_data.start_date,
+        check_in_type=challenge_data.check_in_type,
+        goal_value=challenge_data.goal_value,
+        created_by=current_user.id,
+    )
+    db.add(new_challenge)
+    db.commit()
+    db.refresh(new_challenge)
+
+    return new_challenge
+
+@app.get("/groups/{group_id}/challenges", response_model=list[ChallengeResponse])
+def list_challenges(group_id: int, current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)):
+
+    """List all challenges in a group. Only group members can view them."""
+
+    # the requester must be a member of the group
+    membership = db.query(GroupMember).filter(
+        GroupMember.group_id == group_id,
+        GroupMember.user_id == current_user.id).first()
+    if membership is None:
+        raise HTTPException(status_code=403, detail="You are not a member of this group")
+
+    challenges = db.query(Challenge).filter(Challenge.group_id == group_id).all()
+    return challenges
+
+@app.get("/challenges/{challenge_id}", response_model=ChallengeDetailResponse)
+def get_challenge_details(challenge_id: int, current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)):
+
+    """Get one challenge's details plus the group's members. Members only."""
+
+    challenge = db.query(Challenge).filter(Challenge.id == challenge_id).first()
+    if challenge is None:
+        raise HTTPException(status_code=404, detail="Challenge not found")
+
+    # the requester must be a member of the challenge's group
+    membership = db.query(GroupMember).filter(
+        GroupMember.group_id == challenge.group_id,
+        GroupMember.user_id == current_user.id).first()
+    if membership is None:
+        raise HTTPException(status_code=403, detail="You are not a member of this group")
+
+    # fetch the group's members (JOIN to get emails), same as the members endpoint
+    results = (
+        db.query(GroupMember, User)
+        .join(User, GroupMember.user_id == User.id)
+        .filter(GroupMember.group_id == challenge.group_id)
+        .all()
+    )
+    members = [
+        MemberResponse(user_id=user.id, email=user.email, joined_at=membership.joined_at)
+        for membership, user in results
+    ]
+
+    return ChallengeDetailResponse(challenge=challenge, members=members)
