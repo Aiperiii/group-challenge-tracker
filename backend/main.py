@@ -3,13 +3,17 @@ from sqlalchemy.orm import Session
 from fastapi.security import OAuth2PasswordRequestForm
 
 from database import get_db
-from models import User, Group, GroupMember, Challenge
+from models import User, Group, GroupMember, Challenge, CheckIn, Streak
 from schemas import (UserRegister, UserResponse, Token, GroupCreate, 
-        GroupResponse, GroupJoin,MemberResponse, ChallengeCreate, ChallengeResponse,ChallengeDetailResponse)
+        GroupResponse, GroupJoin,MemberResponse, ChallengeCreate, 
+        ChallengeResponse,ChallengeDetailResponse, CheckInCreate)
 
 from auth import hash_password,verify_password
 from token_utils import create_access_token, get_current_user
-from utils import generate_invite_code
+from utils import generate_invite_code, local_date_of
+from datetime import datetime, timezone
+from streaks import update_stored_streak
+
 
 
 app = FastAPI()
@@ -25,7 +29,7 @@ def register(user : UserRegister, db : Session = Depends(get_db)):
     # Reject duplicate emails with a clean 400 before the DB's UNIQUE
     existing_user = db.query(User).filter(User.email == user.email).first()
     if existing_user:
-        return HTTPException(status_code = 400, detail = "Email already registered")
+        raise HTTPException(status_code = 400, detail = "Email already registered")
     
     # Hash the password here — the plain password is never stored.
     new_user = User(
@@ -120,7 +124,7 @@ def list_members(group_id : int,
     # the requester must be a member of the group to view its members
     requester_membership = db.query(GroupMember).filter(GroupMember.group_id == group_id, GroupMember.user_id == current_user.id).first()
     if requester_membership is None:
-        raise HTTPException(status_code = 403, details = "You are not a member of thi group")
+        raise HTTPException(status_code = 403, detail = "You are not a member of this group")
 
     # join group_members with users to get each members' email
     results = (db.query(GroupMember, User).join(User, GroupMember.user_id == User.id)
@@ -206,3 +210,90 @@ def get_challenge_details(challenge_id: int, current_user: User = Depends(get_cu
     ]
 
     return ChallengeDetailResponse(challenge=challenge, members=members)
+
+@app.post("/challenges/{challenge_id}/checkin")
+def checkin(challenge_id : int, check_in_data : CheckInCreate,
+    current_user : User = Depends(get_current_user), db : Session = Depends(get_db)):
+    """Records a check-in for the current user. One check-in per user per challenge per local day."""
+
+    # the challenge must exist
+    challenge = db.query(Challenge).filter(Challenge.id == challenge_id).first()
+    if challenge is None:
+        raise HTTPException(status_code = 404, detail = "Challenge not found")
+
+    # the user must be a member of the challenge's group
+    membership = db.query(GroupMember).filter(GroupMember.group_id == challenge.group_id,
+    GroupMember.user_id == current_user.id).first()
+    if membership is None:
+        raise HTTPException(status_code = 403, detail = "You are not a member of this group")
+
+    # numeric challenges require a value, others must not have one
+    if challenge.check_in_type == "numeric" and check_in_data.value is None:
+        raise HTTPException(status_code = 422, detail = "This challenge requires a numeric value")
+    if challenge.check_in_type != "numeric" and check_in_data.value is not None:
+        raise HTTPException(status_code = 422, detail = "This challenge does not accept a value")
+
+    # one check-in per user per challenge per LOCAL day.
+    now_utc = datetime.now(timezone.utc)
+    today_local = local_date_of(now_utc, current_user.timezone)
+
+
+    existing_check_ins = db.query(CheckIn).filter(CheckIn.challenge_id == challenge_id, 
+    CheckIn.user_id == current_user.id).all()
+    # ensure no check-in per challenge per day was done before
+    for ch_in in existing_check_ins:
+        if local_date_of(ch_in.checked_in_at, current_user.timezone) == today_local:
+            raise HTTPException(status_code = 400, detail = "You have already checked-in today")
+
+    new_check_in = CheckIn(
+        challenge_id = challenge_id,
+        user_id = current_user.id,
+        checked_in_at = now_utc,
+        value = check_in_data.value,
+        note = check_in_data.note,
+    )
+
+    db.add(new_check_in)
+    db.commit()
+    db.refresh(new_check_in)
+
+    streak_result = update_stored_streak(db, current_user, challenge_id)
+
+    return {"message": "Checked in", 
+    "checked_in_at": new_check_in.checked_in_at, 
+    "local_date": str(today_local),
+    "current_streak": streak_result["current_streak"],
+        "longest_streak": streak_result["longest_streak"]}
+
+@app.get("/challenges/{challenge_id}/leaderboard")
+def leaderboard(challenge_id : int, current_user : User = Depends(get_current_user), db : Session = Depends(get_db)):
+    """Ranks a challenge's members by their current streaks."""
+
+    challenge = db.query(Challenge).filter(Challenge.id == challenge_id).first()
+    if challenge is None:
+        raise HTTPException(status_code = 404, detail = "Challenge not found")
+
+    # the user must be a member of the challenge's group
+    membership = db.query(GroupMember).filter(
+        GroupMember.group_id == challenge.group_id,
+        GroupMember.user_id == current_user.id,
+    ).first()
+    if membership is None:
+        raise HTTPException(status_code = 403, detail = "You are not a member of this group")
+
+    rows = (
+        db.query(Streak, User)
+        .join(User, Streak.user_id == User.id)
+        .filter(Streak.challenge_id == challenge_id)
+        .order_by(Streak.current_streak.desc())
+        .all()
+    )
+
+    return [{
+        "rank" : i + 1,
+        "user_id" : user.id,
+        "email" : user.email,
+        "current_streak" : streak.current_streak,
+        "longest_streak" : streak.longest_streak,
+    } for i, (streak, user) in enumerate(rows)]
+

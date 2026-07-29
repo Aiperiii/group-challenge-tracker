@@ -109,4 +109,6 @@ class ChallengeDetailResponse(BaseModel):
     challenge: ChallengeResponse
     members: list[MemberResponse]
 
-
+class CheckInCreate(BaseModel):
+    value : Optional[int] = None
+    note : Optional[str] = None
