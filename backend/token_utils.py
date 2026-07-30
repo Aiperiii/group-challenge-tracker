@@ -45,3 +45,16 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         raise credentials_exception
 
     return user
+
+def get_user_from_token(token: str, db: Session) -> User | None:
+    """Verify a JWT and return the matching user, or None if invalid. Used for WebSocket auth."""
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id = payload.get("sub")
+        if user_id is None:
+            return None
+    except JWTError:
+        return None
+
+    user = db.query(User).filter(User.id == int(user_id)).first()
+    return user

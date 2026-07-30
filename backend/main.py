@@ -1,15 +1,15 @@
-from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
 from sqlalchemy.orm import Session 
 from fastapi.security import OAuth2PasswordRequestForm
 
-from database import get_db
+from database import get_db, SessionLocal
 from models import User, Group, GroupMember, Challenge, CheckIn, Streak
 from schemas import (UserRegister, UserResponse, Token, GroupCreate, 
         GroupResponse, GroupJoin,MemberResponse, ChallengeCreate, 
         ChallengeResponse,ChallengeDetailResponse, CheckInCreate)
 
 from auth import hash_password,verify_password
-from token_utils import create_access_token, get_current_user
+from token_utils import create_access_token, get_current_user, get_user_from_token
 from utils import generate_invite_code, local_date_of
 from datetime import datetime, timezone
 from streaks import update_stored_streak
@@ -318,18 +318,37 @@ async def websocket_test(websocket : WebSocket):
         message = await websocket.receive_text()
         await websocket.send_text(f"You said {message}")
 
-@app.websocket("/ws/groups/{group_id}")
-async def group_websocket(websocket : WebSocket, group_id : int):
-    await manager.connect(websocket, group_id)
-    try:
-        # keep the connection open, we don't need incoming messages yet
-        while True:
-            await websocket.receive_text()
-    except WebSocketDisconnect:
-        manager.disconnect(websocket, group_id)
-
 @app.post("/test/broadcast/{group_id}")
 async def test_broadcast(group_id: int):
     """TEMPORARY: manually trigger a broadcast to a group, for testing WebSockets."""
     await manager.broadcast(group_id, {"type": "test", "message": "Hello everyone in this group!"})
     return {"status": "broadcast sent"}
+
+
+@app.websocket("/ws/groups/{group_id}")
+async def group_websocket(websocket: WebSocket, group_id: int, token: str = ""):
+    # verify the token and group membership before accepting the connection
+    db = SessionLocal()
+    try:
+        user = get_user_from_token(token, db)
+        if user is None:
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+
+        membership = db.query(GroupMember).filter(
+            GroupMember.group_id == group_id,
+            GroupMember.user_id == user.id,
+        ).first()
+        if membership is None:
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+    finally:
+        db.close()
+
+    # accept and register the connection
+    await manager.connect(websocket, group_id)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket, group_id)
