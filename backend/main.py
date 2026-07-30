@@ -1,6 +1,9 @@
 from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
 from sqlalchemy.orm import Session 
 from fastapi.security import OAuth2PasswordRequestForm
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from contextlib import asynccontextmanager
+from midnight import reveal_all_groups, build_leaderboards
 
 from database import get_db, SessionLocal
 from models import User, Group, GroupMember, Challenge, CheckIn, Streak
@@ -20,6 +23,25 @@ app = FastAPI()
 
 from websocket_manager import ConnectionManager
 manager = ConnectionManager()
+
+scheduler = AsyncIOScheduler()
+
+@asynccontextmanager
+async def lifespan(app):
+    # --- Startup ---
+    scheduler.add_job(reveal_all_groups, "interval", minutes=1, args=[manager])
+    scheduler.start()
+    print("Scheduler started — reveal job runs every minute (test mode).")
+
+    yield  # the app runs here
+
+    # --- Shutdown ---
+    scheduler.shutdown()
+    print("Scheduler stopped.")
+
+
+app = FastAPI(lifespan=lifespan)
+
 
 @app.get('/')
 def read_root():
@@ -347,8 +369,19 @@ async def group_websocket(websocket: WebSocket, group_id: int, token: str = ""):
 
     # accept and register the connection
     await manager.connect(websocket, group_id)
+
+    # immediately send the current leaderboard so a reconnecting client is caught up
+    catch_up_db = SessionLocal()
+
+    try:
+        for message in build_leaderboards(catch_up_db, group_id):
+            await websocket.send_json(message)
+    finally:
+        catch_up_db.close()
+
     try:
         while True:
             await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(websocket, group_id)
+
