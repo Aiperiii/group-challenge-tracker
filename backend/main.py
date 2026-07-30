@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session 
 from fastapi.security import OAuth2PasswordRequestForm
 
@@ -18,9 +18,13 @@ from streaks import update_stored_streak
 
 app = FastAPI()
 
+from websocket_manager import ConnectionManager
+manager = ConnectionManager()
+
 @app.get('/')
 def read_root():
     return {"message": "Challenge Tracker API is running"}
+
 
 @app.post("/register", response_model = UserResponse)
 def register(user : UserRegister, db : Session = Depends(get_db)):
@@ -65,6 +69,7 @@ def get_me(current_user: User = Depends(get_current_user)):
     """Return the currently authenticated user's information."""
     return current_user
 
+
 @app.post("/groups", response_model = GroupResponse)
 def create_group(group_data : GroupCreate, 
             current_user : User = Depends(get_current_user),
@@ -92,6 +97,7 @@ def create_group(group_data : GroupCreate,
 
     return new_group
     
+
 @app.post("/groups/join", response_model = GroupResponse)
 def join_group(join_data : GroupJoin, 
             current_user : User = Depends(get_current_user),
@@ -115,6 +121,7 @@ def join_group(join_data : GroupJoin,
 
     return group
 
+
 @app.get("/groups/{group_id}/members", response_model = list[MemberResponse])
 def list_members(group_id : int, 
         current_user : User = Depends(get_current_user), 
@@ -134,6 +141,7 @@ def list_members(group_id : int,
     MemberResponse(user_id=user.id, email=user.email, joined_at=membership.joined_at)
     for membership, user in results
     ]
+
 
 @app.post("/groups/{group_id}/challenges", response_model=ChallengeResponse)
 def create_challenge(group_id: int, challenge_data: ChallengeCreate,
@@ -164,6 +172,7 @@ def create_challenge(group_id: int, challenge_data: ChallengeCreate,
 
     return new_challenge
 
+
 @app.get("/groups/{group_id}/challenges", response_model=list[ChallengeResponse])
 def list_challenges(group_id: int, current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)):
@@ -179,6 +188,7 @@ def list_challenges(group_id: int, current_user: User = Depends(get_current_user
 
     challenges = db.query(Challenge).filter(Challenge.group_id == group_id).all()
     return challenges
+
 
 @app.get("/challenges/{challenge_id}", response_model=ChallengeDetailResponse)
 def get_challenge_details(challenge_id: int, current_user: User = Depends(get_current_user),
@@ -210,6 +220,7 @@ def get_challenge_details(challenge_id: int, current_user: User = Depends(get_cu
     ]
 
     return ChallengeDetailResponse(challenge=challenge, members=members)
+
 
 @app.post("/challenges/{challenge_id}/checkin")
 def checkin(challenge_id : int, check_in_data : CheckInCreate,
@@ -265,6 +276,7 @@ def checkin(challenge_id : int, check_in_data : CheckInCreate,
     "current_streak": streak_result["current_streak"],
         "longest_streak": streak_result["longest_streak"]}
 
+
 @app.get("/challenges/{challenge_id}/leaderboard")
 def leaderboard(challenge_id : int, current_user : User = Depends(get_current_user), db : Session = Depends(get_db)):
     """Ranks a challenge's members by their current streaks."""
@@ -297,3 +309,27 @@ def leaderboard(challenge_id : int, current_user : User = Depends(get_current_us
         "longest_streak" : streak.longest_streak,
     } for i, (streak, user) in enumerate(rows)]
 
+
+@app.websocket("/ws/test")
+async def websocket_test(websocket : WebSocket):
+    await websocket.accept()
+    await websocket.send_text("Connected to the Challenge Tracker live feed!")
+    while True:
+        message = await websocket.receive_text()
+        await websocket.send_text(f"You said {message}")
+
+@app.websocket("/ws/groups/{group_id}")
+async def group_websocket(websocket : WebSocket, group_id : int):
+    await manager.connect(websocket, group_id)
+    try:
+        # keep the connection open, we don't need incoming messages yet
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket, group_id)
+
+@app.post("/test/broadcast/{group_id}")
+async def test_broadcast(group_id: int):
+    """TEMPORARY: manually trigger a broadcast to a group, for testing WebSockets."""
+    await manager.broadcast(group_id, {"type": "test", "message": "Hello everyone in this group!"})
+    return {"status": "broadcast sent"}

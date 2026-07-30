@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<body>
+  <h3>WebSocket Test</h3>
+  <div id="log"></div>
+  <script>
+    const log = (msg) => {
+      document.getElementById("log").innerHTML += msg + "<br>";
+    };
+    const ws = new WebSocket("ws://localhost:8000/ws/groups/1");
+    ws.onopen = () => log("✅ Connected to group 1");
+    ws.onmessage = (e) => log("📨 Received: " + e.data);
+    ws.onclose = (e) => log("❌ Closed. Code: " + e.code);
+    ws.onerror = () => log("⚠️ Error");
+  </script>
+</body>
+</html>
