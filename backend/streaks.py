@@ -48,19 +48,24 @@ def calculate_streak(db : Session, user : User, challenge_id : int, today = None
 
 
 def update_stored_streak(db : Session, user : User, challenge_id : int):
-    """Recalculate user's streak and save it into the streaks table."""
+    """Recalculate user's streak and save it into the streaks table.
+    Locks the row to prevent races."""
+    # lock the existing streak row (if any) so concurrent updates must wait
+    streak_row = db.query(Streak).filter(
+        Streak.challenge_id == challenge_id,
+        Streak.user_id == user.id,
+    ).with_for_update().first()
 
-    results = calculate_streak(db, user, challenge_id)
+    # recalculate from check-ins (inside the same transaction).
+    result = calculate_streak(db, user, challenge_id)
 
-    # find an existing streak row for this user+challenge or make a new one (upsert)
-    streaks_row = db.query(Streak).filter(Streak.user_id == user.id, Streak.challenge_id == challenge_id).first()
-    if streaks_row is None:
-        streaks_row = Streak(challenge_id = challenge_id, user_id = user.id)
-        db.add(streaks_row)
-    
-    streaks_row.current_streak = results["current_streak"]
-    streaks_row.longest_streak = results["longest_streak"]
-    streaks_row.last_calculated_at = datetime.now(timezone.utc)
+    if streak_row is None:
+        streak_row = Streak(challenge_id=challenge_id, user_id=user.id)
+        db.add(streak_row)
 
-    db.commit()
-    return results
+    streak_row.current_streak = result["current_streak"]
+    streak_row.longest_streak = result["longest_streak"]
+    streak_row.last_calculated_at = datetime.now(timezone.utc)
+
+    db.commit()  # commit releases the lock
+    return result

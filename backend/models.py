@@ -56,6 +56,9 @@ class CheckIn(Base):
 
 class Streak(Base):
     __tablename__ = "streaks"
+    __table_args__ = (
+        UniqueConstraint("challenge_id", "user_id", name="uq_streak_challenge_user"),
+    )
 
     id = Column(Integer, primary_key=True)
     challenge_id = Column(Integer, ForeignKey("challenges.id"), nullable=False)

@@ -29,9 +29,9 @@ scheduler = AsyncIOScheduler()
 @asynccontextmanager
 async def lifespan(app):
     # --- Startup ---
-    scheduler.add_job(reveal_all_groups, "interval", minutes=1, args=[manager])
+    scheduler.add_job(reveal_all_groups, "cron", hour=0, minute=0, args=[manager])
     scheduler.start()
-    print("Scheduler started — reveal job runs every minute (test mode).")
+    print("Scheduler started — reveal job runs at midnight.")
 
     yield  # the app runs here
 
@@ -384,4 +384,6 @@ async def group_websocket(websocket: WebSocket, group_id: int, token: str = ""):
             await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(websocket, group_id)
+
+
 
