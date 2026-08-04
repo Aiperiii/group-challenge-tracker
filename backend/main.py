@@ -2,6 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconn
 from sqlalchemy.orm import Session 
 from fastapi.security import OAuth2PasswordRequestForm
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from midnight import reveal_all_groups, build_leaderboards
 
@@ -16,12 +17,8 @@ from token_utils import create_access_token, get_current_user, get_user_from_tok
 from utils import generate_invite_code, local_date_of
 from datetime import datetime, timezone
 from streaks import update_stored_streak
-
-
-
-app = FastAPI()
-
 from websocket_manager import ConnectionManager
+
 manager = ConnectionManager()
 
 scheduler = AsyncIOScheduler()
@@ -39,9 +36,15 @@ async def lifespan(app):
     scheduler.shutdown()
     print("Scheduler stopped.")
 
-
 app = FastAPI(lifespan=lifespan)
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5174", "http://localhost:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get('/')
 def read_root():
