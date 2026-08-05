@@ -4,6 +4,7 @@ from datetime import datetime, date
 
 class UserRegister(BaseModel):
     email : EmailStr
+    name: str
     password : str
     timezone : str  = "UTC"
 
@@ -19,6 +20,7 @@ class UserRegister(BaseModel):
 class UserResponse(BaseModel):
     id : int
     email : EmailStr
+    name: str
     timezone : str
     created_at : datetime
 

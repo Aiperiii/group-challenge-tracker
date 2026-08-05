@@ -63,6 +63,7 @@ def register(user : UserRegister, db : Session = Depends(get_db)):
     # Hash the password here — the plain password is never stored.
     new_user = User(
         email = user.email,
+        name = user.name,
         password_hash = hash_password(user.password),
         timezone  = user.timezone,
     )
@@ -387,6 +388,17 @@ async def group_websocket(websocket: WebSocket, group_id: int, token: str = ""):
             await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(websocket, group_id)
+
+
+@app.get("/my-groups", response_model  = list[GroupResponse])
+def my_groups(current_user : User = Depends(get_current_user), db : Session = Depends(get_db)):
+    """List all groups the current user is a member of."""
+
+    rows = (db.query(Group).join(GroupMember, GroupMember.group_id == Group.id)
+        .filter(GroupMember.user_id == current_user.id)
+        .all())
+    
+    return rows
 
 
 

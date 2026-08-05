@@ -11,6 +11,11 @@ function App() {
   const [timezone, setTimezone] = useState(
     Intl.DateTimeFormat().resolvedOptions().timeZone
   )
+  const [groups, setGroups] = useState([])
+  const [challenges, setChallenges] = useState([])
+  const [name, setName] = useState("")
+
+
   async function fetchMe(token) {
     try {
       const response = await fetch('http://localhost:8000/me', {
@@ -20,6 +25,7 @@ function App() {
         const userData = await response.json()
         setUser(userData)
         setLoggedIn(true)
+        await fetchGroupsAndChallenges(token)
       } else {
         setError('Could not load your profile.')
       }
@@ -60,7 +66,7 @@ function App() {
       const response = await fetch('http://localhost:8000/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email, password: password, timezone: timezone }),
+        body: JSON.stringify({ email: email,  name: name, password: password, timezone: timezone }),
       })
 
       if (!response.ok) {
@@ -72,6 +78,31 @@ function App() {
       await handleLogin()
     } catch (err) {
       setError('Could not reach the server.')
+    }
+  }
+
+  async function fetchGroupsAndChallenges(token) {
+    try {
+      // Get the user's groups.
+      const groupsResponse = await fetch('http://localhost:8000/my-groups', {
+        headers: { 'Authorization': 'Bearer ' + token },
+      })
+      const groupsData = await groupsResponse.json()
+      setGroups(groupsData)
+
+      // For each group, get its challenges, and collect them all.
+      let allChallenges = []
+      for (const group of groupsData) {
+        const challengesResponse = await fetch(
+          `http://localhost:8000/groups/${group.id}/challenges`,
+          { headers: { 'Authorization': 'Bearer ' + token } }
+        )
+        const challengesData = await challengesResponse.json()
+        allChallenges = allChallenges.concat(challengesData)
+      }
+      setChallenges(allChallenges)
+    } catch (err) {
+      setError('Could not load your challenges.')
     }
   }
 
@@ -89,13 +120,42 @@ function App() {
 
       {loggedIn ? (
         <div>
-          <p>Welcome, {user.email}!</p>
-          <p>Your timezone: {user.timezone}</p>
+          <p>Welcome, {user.name}!</p>
           <button onClick={handleLogout}>Log out</button>
+
+          <h2>Your Groups</h2>
+          {groups.length === 0 ? (
+            <p>You're not in any groups yet.</p>
+          ) : (
+            <ul>
+              {groups.map((group) => (
+                <li key={group.id}>{group.name} (invite code: {group.invite_code})</li>
+              ))}
+            </ul>
+          )}
+
+          <h2>Your Challenges</h2>
+          {challenges.length === 0 ? (
+            <p>No challenges yet.</p>
+          ) : (
+            <ul>
+              {challenges.map((challenge) => (
+                <li key={challenge.id}>
+                  {challenge.name} — {challenge.check_in_type}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       ) : showRegister ? (
         <div>
           <h2>Register</h2>
+          <input
+            type="text"
+            placeholder="Name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
           <input
             type="text"
             placeholder="Email"
