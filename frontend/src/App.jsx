@@ -20,9 +20,16 @@ function App() {
   const [currentStreak, setCurrentStreak] = useState(0)
   const [leaderboard, setLeaderboard] = useState([])
   const [leaderboardView, setLeaderboardView] = useState('current')
-
-
-
+  const [showCreateChallenge, setShowCreateChallenge] = useState(false)
+  const [newName, setNewName] = useState('')
+  const [newDescription, setNewDescription] = useState('')
+  const [newDurationDays, setNewDurationDays] = useState('')
+  const [newStartDate, setNewStartDate] = useState('')
+  const [newCheckInType, setNewCheckInType] = useState('boolean')
+  const [newGoalValue, setNewGoalValue] = useState('')
+  const [newChallengeGroupId, setNewChallengeGroupId] = useState('')
+  const [selectedGroup, setSelectedGroup] = useState('')
+  
 
 
   async function fetchMe(token) {
@@ -222,124 +229,273 @@ function App() {
     })
   }
 
+  async function handleCreateChallenge() {
+    setError('')
+
+    // Validate the form before sending
+    if (!newName) {
+      setError('Please enter a challenge name.')
+      return
+    }
+    if (!newChallengeGroupId) {
+      setError('Please choose a group.')
+      return
+    }
+    if (!newDurationDays || Number(newDurationDays) <= 0) {
+      setError('Please enter a duration (a positive number of days).')
+      return
+    }
+    if (!newStartDate) {
+      setError('Please choose a start date.')
+      return
+    }
+
+    const token = localStorage.getItem('token')
+
+    // Build the body, matching the ChallengeCreate schema.
+    const body = {
+      name: newName,
+      description: newDescription || null,
+      duration_days: Number(newDurationDays),
+      start_date: newStartDate,   // "YYYY-MM-DD" from the date picker
+      check_in_type: newCheckInType,
+      goal_value: newGoalValue ? Number(newGoalValue) : null,
+    }
+
+    try {
+      const response = await fetch(
+        `http://localhost:8000/groups/${newChallengeGroupId}/challenges`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + token,
+          },
+          body: JSON.stringify(body),
+        }
+      )
+
+      if (!response.ok) {
+        const data = await response.json()
+        setError(
+          typeof data.detail === 'string'
+            ? data.detail
+            : 'Could not create challenge — check the fields.'
+        )
+        return
+      }
+
+      // Success — refresh the challenge list and close the form.
+      setShowCreateChallenge(false)
+      setNewName('')
+      setNewDescription('')
+      setNewStartDate('')
+      setNewGoalValue('')
+      await fetchGroupsAndChallenges(token)
+    } catch (err) {
+      setError('Could not reach the server.')
+    }
+  }
+
+  
+  async function openGroup(group) {
+    setSelectedGroup(group)
+    setSelectedChallenge(null)   // clear any open challenge when switching groups
+    const token = localStorage.getItem('token')
+    try {
+      const response = await fetch(
+        `http://localhost:8000/groups/${group.id}/challenges`,
+        { headers: { 'Authorization': 'Bearer ' + token } }
+      )
+      const data = await response.json()
+      setChallenges(data)   // now `challenges` holds ONLY this group's challenges
+    } catch (err) {
+      setError('Could not load challenges for this group.')
+    }
+  }
+
+  // RETURN starts here
   return (
     <div>
       <h1>Challenge Tracker</h1>
 
       {loggedIn ? (
         <div>
-          <p>Welcome, {user.name}!</p>
-          <button onClick={handleLogout}>Log out</button>
+        <p>Welcome, {user.name}!</p>
+        <button onClick={handleLogout}>Log out</button>
 
-          <h2>Your Groups</h2>
-          {groups.length === 0 ? (
-            <p>You're not in any groups yet.</p>
-          ) : (
-            <ul>
-              {groups.map((group) => (
-                <li key={group.id}>{group.name} (invite code: {group.invite_code})</li>
-              ))}
-            </ul>
-          )}
+        {!selectedGroup ? (
+          // ---- GROUPS LIST (no group selected) ----
+          <div>
+            <h2>Your Groups</h2>
+            {groups.length === 0 ? (
+              <p>You're not in any groups yet.</p>
+            ) : (
+              <ul>
+                {groups.map((group) => (
+                  <li key={group.id}>
+                    <button onClick={() => openGroup(group)}>
+                      {group.name} (invite code: {group.invite_code})
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        ) : (
+          // ---- INSIDE A GROUP (a group is selected) ----
+          <div>
+            <button onClick={() => { setSelectedGroup(null); setSelectedChallenge(null) }}>
+              ← Back to groups
+            </button>
 
-          <h2>Your Challenges</h2>
-          {selectedChallenge ? (
-            <div>
-              <button onClick={() => { setSelectedChallenge(null); setCheckinMessage('') }}>
-                ← Back to challenges
-              </button>
+            <h2>{selectedGroup.name}</h2>
+            <p>Invite code: {selectedGroup.invite_code}</p>
 
-              <h3>{selectedChallenge.name}</h3>
-              <p>Type: {selectedChallenge.check_in_type}</p>
-              <p>Current streak: {currentStreak} 🔥</p>
+            {/* Create-challenge form (only when not viewing a challenge) */}
+            {!selectedChallenge && (
+              <div>
+                <button onClick={() => setShowCreateChallenge(!showCreateChallenge)}>
+                  {showCreateChallenge ? 'Cancel' : '+ New challenge'}
+                </button>
 
-              {selectedChallenge.check_in_type === 'numeric' ? (
+                {showCreateChallenge && (
+                  <div>
+                    <input
+                      type="text"
+                      placeholder="Challenge name"
+                      value={newName}
+                      onChange={(e) => setNewName(e.target.value)}
+                    />
+                    <input
+                      type="text"
+                      placeholder="Description (optional)"
+                      value={newDescription}
+                      onChange={(e) => setNewDescription(e.target.value)}
+                    />
+                    <select value={newCheckInType} onChange={(e) => setNewCheckInType(e.target.value)}>
+                      <option value="boolean">Yes/No (boolean)</option>
+                      <option value="numeric">Number (numeric)</option>
+                      <option value="text">Text</option>
+                    </select>
+                    <input
+                      type="number"
+                      placeholder="Duration (days)"
+                      value={newDurationDays}
+                      onChange={(e) => setNewDurationDays(e.target.value)}
+                    />
+                    <input
+                      type="date"
+                      value={newStartDate}
+                      onChange={(e) => setNewStartDate(e.target.value)}
+                    />
+                    {newCheckInType === 'numeric' && (
+                      <input
+                        type="number"
+                        placeholder="Goal value (optional)"
+                        value={newGoalValue}
+                        onChange={(e) => setNewGoalValue(e.target.value)}
+                      />
+                    )}
+                    <button onClick={handleCreateChallenge}>Create</button>
+                    {error && <p style={{ color: 'red' }}>{error}</p>}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Either the check-in screen or this group's challenge list */}
+            {selectedChallenge ? (
+              <div>
+                <button onClick={() => { setSelectedChallenge(null); setCheckinMessage('') }}>
+                  ← Back to challenges
+                </button>
+
+                <h3>{selectedChallenge.name}</h3>
+                <p>Type: {selectedChallenge.check_in_type}</p>
+                <p>Current streak: {currentStreak} 🔥</p>
+
+                {selectedChallenge.check_in_type === 'numeric' ? (
+                  <div>
+                    <input
+                      type="number"
+                      placeholder="Enter your value"
+                      value={numericValue}
+                      onChange={(e) => setNumericValue(e.target.value)}
+                    />
+                    <button onClick={() => handleCheckin(selectedChallenge)}>Log today</button>
+                  </div>
+                ) : (
+                  <button onClick={() => handleCheckin(selectedChallenge)}>I did it today</button>
+                )}
+
+                {checkinMessage && <p>{checkinMessage}</p>}
+
+                <h3>Leaderboard</h3>
                 <div>
-                  <input
-                    type="number"
-                    placeholder="Enter your value"
-                    value={numericValue}
-                    onChange={(e) => setNumericValue(e.target.value)}
-                  />
-                  <button onClick={() => handleCheckin(selectedChallenge)}>
-                    Log today
+                  <button
+                    onClick={() => setLeaderboardView('current')}
+                    style={{
+                      backgroundColor: leaderboardView === 'current' ? '#ff6b35' : '#eee',
+                      color: leaderboardView === 'current' ? 'white' : 'black',
+                      border: 'none', padding: '8px 16px', marginRight: '8px',
+                      borderRadius: '6px', cursor: 'pointer',
+                    }}
+                  >
+                    Current streak 🔥
+                  </button>
+                  <button
+                    onClick={() => setLeaderboardView('longest')}
+                    style={{
+                      backgroundColor: leaderboardView === 'longest' ? '#f7b731' : '#eee',
+                      color: leaderboardView === 'longest' ? 'white' : 'black',
+                      border: 'none', padding: '8px 16px',
+                      borderRadius: '6px', cursor: 'pointer',
+                    }}
+                  >
+                    Longest streak 🏆
                   </button>
                 </div>
-              ) : (
-                <button onClick={() => handleCheckin(selectedChallenge)}>
-                  I did it today
-                </button>
-              )}
 
-              {checkinMessage && <p>{checkinMessage}</p>}
-              <h3>Leaderboard</h3>
-              <div>
-                <button
-                  onClick={() => setLeaderboardView('current')}
-                  style={{
-                    backgroundColor: leaderboardView === 'current' ? '#ff6b35' : '#eee',
-                    color: leaderboardView === 'current' ? 'white' : 'black',
-                    border: 'none',
-                    padding: '8px 16px',
-                    marginRight: '8px',
-                    borderRadius: '6px',
-                    cursor: 'pointer',
-                  }}
-                >
-                  Current streak 🔥
-                </button>
-                <button
-                  onClick={() => setLeaderboardView('longest')}
-                  style={{
-                    backgroundColor: leaderboardView === 'longest' ? '#f7b731' : '#eee',
-                    color: leaderboardView === 'longest' ? 'white' : 'black',
-                    border: 'none',
-                    padding: '8px 16px',
-                    borderRadius: '6px',
-                    cursor: 'pointer',
-                  }}
-                >
-                  Longest streak 🏆
-                </button>
+                {leaderboard.length === 0 ? (
+                  <p>No streaks yet.</p>
+                ) : leaderboardView === 'current' ? (
+                  <ul style={{ listStyle: 'none', padding: 0 }}>
+                    {assignRanks(leaderboard, 'current_streak').map((entry) => (
+                      <li key={entry.user_id}>
+                        #{entry.rank} {entry.name || entry.email} — {entry.current_streak} 🔥
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <ul style={{ listStyle: 'none', padding: 0 }}>
+                    {assignRanks(
+                      [...leaderboard].sort((a, b) => b.longest_streak - a.longest_streak),
+                      'longest_streak'
+                    ).map((entry) => (
+                      <li key={entry.user_id}>
+                        #{entry.rank} {entry.name || entry.email} — {entry.longest_streak} 🏆
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
-              {leaderboard.length === 0 ? (
-                <p>No streaks yet.</p>
-              ) : leaderboardView === 'current' ? (
-                <ul style={{ listStyle: 'none', padding: 0 }}>
-                  {assignRanks(leaderboard, 'current_streak').map((entry) => (
-                    <li key={entry.user_id}>
-                      #{entry.rank} {entry.name || entry.email} — {entry.current_streak} 🔥
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <ul style={{ listStyle: 'none', padding: 0 }}>
-                  {assignRanks(
-                    [...leaderboard].sort((a, b) => b.longest_streak - a.longest_streak),
-                    'longest_streak'
-                  ).map((entry) => (
-                    <li key={entry.user_id}>
-                      #{entry.rank} {entry.name || entry.email} — {entry.longest_streak} 🏆
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          ) : challenges.length === 0 ? (
-            <p>No challenges yet.</p>
-          ) : (
-            <ul>
-              {challenges.map((challenge) => (
-                <li key={challenge.id}>
-                  <button onClick={() => openChallenge(challenge)}>
-                    {challenge.name} — {challenge.check_in_type}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-
-        </div>
+            ) : challenges.length === 0 ? (
+              <p>No challenges in this group yet.</p>
+            ) : (
+              <ul>
+                {challenges.map((challenge) => (
+                  <li key={challenge.id}>
+                    <button onClick={() => openChallenge(challenge)}>
+                      {challenge.name} — {challenge.check_in_type}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </div>
       ) : showRegister ? (
         <div>
           <h2>Register</h2>
