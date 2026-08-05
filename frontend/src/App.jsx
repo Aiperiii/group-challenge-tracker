@@ -19,6 +19,8 @@ function App() {
   const [checkinMessage, setCheckinMessage] = useState('')
   const [currentStreak, setCurrentStreak] = useState(0)
   const [leaderboard, setLeaderboard] = useState([])
+  const [leaderboardView, setLeaderboardView] = useState('current')
+
 
 
 
@@ -270,14 +272,54 @@ function App() {
               )}
 
               {checkinMessage && <p>{checkinMessage}</p>}
-              <h3>Leaderboard (current streak)</h3>
+              <h3>Leaderboard</h3>
+              <div>
+                <button
+                  onClick={() => setLeaderboardView('current')}
+                  style={{
+                    backgroundColor: leaderboardView === 'current' ? '#ff6b35' : '#eee',
+                    color: leaderboardView === 'current' ? 'white' : 'black',
+                    border: 'none',
+                    padding: '8px 16px',
+                    marginRight: '8px',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Current streak 🔥
+                </button>
+                <button
+                  onClick={() => setLeaderboardView('longest')}
+                  style={{
+                    backgroundColor: leaderboardView === 'longest' ? '#f7b731' : '#eee',
+                    color: leaderboardView === 'longest' ? 'white' : 'black',
+                    border: 'none',
+                    padding: '8px 16px',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Longest streak 🏆
+                </button>
+              </div>
               {leaderboard.length === 0 ? (
                 <p>No streaks yet.</p>
-              ) : (
+              ) : leaderboardView === 'current' ? (
                 <ul style={{ listStyle: 'none', padding: 0 }}>
                   {assignRanks(leaderboard, 'current_streak').map((entry) => (
-                    <li key={entry.user_id} value={entry.rank}>
+                    <li key={entry.user_id}>
                       #{entry.rank} {entry.name || entry.email} — {entry.current_streak} 🔥
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <ul style={{ listStyle: 'none', padding: 0 }}>
+                  {assignRanks(
+                    [...leaderboard].sort((a, b) => b.longest_streak - a.longest_streak),
+                    'longest_streak'
+                  ).map((entry) => (
+                    <li key={entry.user_id}>
+                      #{entry.rank} {entry.name || entry.email} — {entry.longest_streak} 🏆
                     </li>
                   ))}
                 </ul>
