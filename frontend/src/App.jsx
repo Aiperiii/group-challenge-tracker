@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import './App.css'
 
 function App() {
@@ -18,6 +18,8 @@ function App() {
   const [numericValue, setNumericValue] = useState('')
   const [checkinMessage, setCheckinMessage] = useState('')
   const [currentStreak, setCurrentStreak] = useState(0)
+  const [leaderboard, setLeaderboard] = useState([])
+
 
 
 
@@ -124,6 +126,7 @@ function App() {
         { headers: { 'Authorization': 'Bearer ' + token } }
       )
       const leaderboard = await response.json()
+      setLeaderboard(leaderboard)
       const myEntry = leaderboard.find((entry) => entry.user_id === user.id)
       setCurrentStreak(myEntry ? myEntry.current_streak : 0)
     } catch (err) {
@@ -173,12 +176,48 @@ function App() {
     }
   }
 
+  useEffect(() => {
+    //only connect if the challenge is selected
+    if(!selectedChallenge) return
+
+    const token = localStorage.getItem('token')
+    const groupId = selectedChallenge.group_id
+    const ws = new WebSocket(
+      `ws://localhost:8000/ws/groups/${groupId}?token=${token}`
+    )
+
+    ws.onmessage = (event) => {
+      const message = JSON.parse(event.data)
+      // If this message is for the challenge we're viewing, update the leaderboard.
+      if(message.challenge_id == selectedChallenge.id && message.leaderboard){
+        setLeaderboard(message.leaderboard)
+      }
+    }
+    // Cleanup: close the WebSocket when leaving or switching challenges.
+    return () => {
+      ws.close()
+    }
+  }, [selectedChallenge])
+
   function handleLogout() {
     localStorage.removeItem('token')
     setLoggedIn(false)
     setUser(null)
     setEmail('')
     setPassword('')
+  }
+
+  function assignRanks(entries, streakField){
+    let rank = 0
+    let previousValue = null
+    return entries.map((entry, index ) => {
+      const value = entry[streakField]
+      if (value != previousValue){
+        rank = index + 1
+        previousValue = value
+      }
+      return { ...entry, rank: rank }
+    })
   }
 
   return (
@@ -231,6 +270,18 @@ function App() {
               )}
 
               {checkinMessage && <p>{checkinMessage}</p>}
+              <h3>Leaderboard (current streak)</h3>
+              {leaderboard.length === 0 ? (
+                <p>No streaks yet.</p>
+              ) : (
+                <ul style={{ listStyle: 'none', padding: 0 }}>
+                  {assignRanks(leaderboard, 'current_streak').map((entry) => (
+                    <li key={entry.user_id} value={entry.rank}>
+                      #{entry.rank} {entry.name || entry.email} — {entry.current_streak} 🔥
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           ) : challenges.length === 0 ? (
             <p>No challenges yet.</p>

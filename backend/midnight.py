@@ -33,6 +33,7 @@ async def reveal_group(db : Session, manager : ConnectionManager, group_id : int
                 "rank": i + 1,
                 "user_id": user.id,
                 "email": user.email,
+                "name" : user.name,
                 "current_streak": streak.current_streak,
                 "longest_streak": streak.longest_streak,
             }
@@ -73,6 +74,7 @@ def build_leaderboards(db: Session, group_id: int) -> list[dict]:
                 "rank": i + 1,
                 "user_id": user.id,
                 "email": user.email,
+                "name" : user.name,
                 "current_streak": streak.current_streak,
                 "longest_streak": streak.longest_streak,
             }

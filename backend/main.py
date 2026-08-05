@@ -249,7 +249,7 @@ def get_challenge_details(challenge_id: int, current_user: User = Depends(get_cu
 
 
 @app.post("/challenges/{challenge_id}/checkin")
-def checkin(challenge_id : int, check_in_data : CheckInCreate,
+async def checkin(challenge_id : int, check_in_data : CheckInCreate,
     current_user : User = Depends(get_current_user), db : Session = Depends(get_db)):
     """Records a check-in for the current user. One check-in per user per challenge per local day."""
 
@@ -296,6 +296,11 @@ def checkin(challenge_id : int, check_in_data : CheckInCreate,
 
     streak_result = update_stored_streak(db, current_user, challenge_id)
 
+    # Broadcast the updated leaderboard so everyone sees it live.
+    
+    for message in build_leaderboards(db, challenge.group_id):
+        await manager.broadcast(challenge.group_id, message)
+
     return {"message": "Checked in", 
     "checked_in_at": new_check_in.checked_in_at, 
     "local_date": str(today_local),
@@ -331,6 +336,7 @@ def leaderboard(challenge_id : int, current_user : User = Depends(get_current_us
         "rank" : i + 1,
         "user_id" : user.id,
         "email" : user.email,
+        "name" : user.name,
         "current_streak" : streak.current_streak,
         "longest_streak" : streak.longest_streak,
     } for i, (streak, user) in enumerate(rows)]
