@@ -14,6 +14,11 @@ function App() {
   const [groups, setGroups] = useState([])
   const [challenges, setChallenges] = useState([])
   const [name, setName] = useState("")
+  const [selectedChallenge, setSelectedChallenge] = useState(null)
+  const [numericValue, setNumericValue] = useState('')
+  const [checkinMessage, setCheckinMessage] = useState('')
+  const [currentStreak, setCurrentStreak] = useState(0)
+
 
 
   async function fetchMe(token) {
@@ -106,6 +111,68 @@ function App() {
     }
   }
 
+  async function openChallenge(challenge) {
+    setSelectedChallenge(challenge)
+    setCheckinMessage('')
+    setNumericValue('')
+
+    // Fetch this challenge's leaderboard to find the current user's streak.
+    const token = localStorage.getItem('token')
+    try {
+      const response = await fetch(
+        `http://localhost:8000/challenges/${challenge.id}/leaderboard`,
+        { headers: { 'Authorization': 'Bearer ' + token } }
+      )
+      const leaderboard = await response.json()
+      const myEntry = leaderboard.find((entry) => entry.user_id === user.id)
+      setCurrentStreak(myEntry ? myEntry.current_streak : 0)
+    } catch (err) {
+      setCurrentStreak(0)
+    }
+  }
+
+  async function handleCheckin(challenge) {
+    setCheckinMessage('')
+    const token = localStorage.getItem('token')
+
+    // Build the request body based on the challenge type.
+    let body = {}
+    if (challenge.check_in_type === 'numeric') {
+      body = { value: Number(numericValue) }
+    } else {
+      body = {}  // boolean/text: no value needed for a simple "done"
+    }
+
+    try {
+      const response = await fetch(
+        `http://localhost:8000/challenges/${challenge.id}/checkin`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + token,
+          },
+          body: JSON.stringify(body),
+        }
+      )
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        setCheckinMessage(data.detail || 'Check-in failed.')
+        return
+      }
+
+      setCheckinMessage(
+        `Checked in! Current streak: ${data.current_streak} 🔥`
+      )
+      setCurrentStreak(data.current_streak) 
+      setNumericValue('')
+    } catch (err) {
+      setCheckinMessage('Could not reach the server.')
+    }
+  }
+
   function handleLogout() {
     localStorage.removeItem('token')
     setLoggedIn(false)
@@ -135,17 +202,50 @@ function App() {
           )}
 
           <h2>Your Challenges</h2>
-          {challenges.length === 0 ? (
+          {selectedChallenge ? (
+            <div>
+              <button onClick={() => { setSelectedChallenge(null); setCheckinMessage('') }}>
+                ← Back to challenges
+              </button>
+
+              <h3>{selectedChallenge.name}</h3>
+              <p>Type: {selectedChallenge.check_in_type}</p>
+              <p>Current streak: {currentStreak} 🔥</p>
+
+              {selectedChallenge.check_in_type === 'numeric' ? (
+                <div>
+                  <input
+                    type="number"
+                    placeholder="Enter your value"
+                    value={numericValue}
+                    onChange={(e) => setNumericValue(e.target.value)}
+                  />
+                  <button onClick={() => handleCheckin(selectedChallenge)}>
+                    Log today
+                  </button>
+                </div>
+              ) : (
+                <button onClick={() => handleCheckin(selectedChallenge)}>
+                  I did it today
+                </button>
+              )}
+
+              {checkinMessage && <p>{checkinMessage}</p>}
+            </div>
+          ) : challenges.length === 0 ? (
             <p>No challenges yet.</p>
           ) : (
             <ul>
               {challenges.map((challenge) => (
                 <li key={challenge.id}>
-                  {challenge.name} — {challenge.check_in_type}
+                  <button onClick={() => openChallenge(challenge)}>
+                    {challenge.name} — {challenge.check_in_type}
+                  </button>
                 </li>
               ))}
             </ul>
           )}
+
         </div>
       ) : showRegister ? (
         <div>
