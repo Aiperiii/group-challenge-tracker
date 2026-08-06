@@ -33,7 +33,7 @@ function App() {
   const [newGroupName, setNewGroupName] = useState('')
   const [groupMembers, setGroupMembers] = useState([])
   const [groupTab, setGroupTab] = useState('challenges')   // 'challenges' or 'members'
-
+  const [showIntro, setShowIntro] = useState(true)
   
   async function fetchMe(token) {
     try {
@@ -413,8 +413,14 @@ function App() {
 
   // RETURN starts here
   return (
-    <div>
-      <h1>Challenge Tracker</h1>
+    <div className="app">
+      <div className="app-header">
+        <div className="brand">
+          <span className="brand-logo">⚡</span>
+          Challenge Tracker
+        </div>
+        {loggedIn && <span className="brand-who">Hi, {user.name}</span>}
+      </div>
 
       {loggedIn ? (
         <div>
@@ -506,7 +512,7 @@ function App() {
                   {/* your existing: create-challenge form + the {selectedChallenge ? ...} check-in/leaderboard + challenge list all go here */}
                 </div>
               )}
-              
+
             {/* Create-challenge form (only when not viewing a challenge) */}
             {!selectedChallenge && (
               <div>
@@ -651,64 +657,81 @@ function App() {
           </div>
         )}
       </div>
+      ) : showIntro ? (
+      // ---- INTRO / LANDING ----
+      <div className="intro">
+        <div className="intro-mark">⚡</div>
+        <h1 className="intro-title">Chase streaks with your crew.</h1>
+        <p className="intro-sub">Set daily challenges, check in together, and watch the leaderboard live.</p>
+        <button
+          className="btn space"
+          onClick={() => { setShowIntro(false); setShowRegister(true); setError('') }}
+        >
+          Get started
+        </button>
+        <button
+          className="btn btn-ghost space-sm"
+          onClick={() => { setShowIntro(false); setShowRegister(false); setError('') }}
+        >
+          Log in
+        </button>
+      </div>
       ) : showRegister ? (
         <div>
-          <h2>Register</h2>
+          <h1 className = "title">Create account</h1>
+          <p className="subtitle">Your streak starts here.</p>
+
+          <label>Name</label>
           <input
             type="text"
-            placeholder="Name"
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
+          <label>Email</label>
           <input
             type="text"
-            placeholder="Email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
+          <label>Password</label>
           <input
             type="password"
-            placeholder="Password"
+            placeholder="At least 8 characters"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
-          <select value={timezone} onChange={(e) => setTimezone(e.target.value)}>
-            <option value="America/Chicago">Central (Houston, Chicago)</option>
-            <option value="America/New_York">Eastern (New York)</option>
-            <option value="America/Denver">Mountain (Denver)</option>
-            <option value="America/Los_Angeles">Pacific (Los Angeles)</option>
-            <option value="Asia/Bishkek">Bishkek</option>
-          </select>
-          <button onClick={handleRegister}>Register</button>
-          {error && <p style={{ color: 'red' }}>{error}</p>}
-          <p>
+          
+          <button className = "btn space" onClick={handleRegister}>Register</button>
+          {error && <p className="error-text">{error}</p>}
+          <p className="center space muted">
             Already have an account?{' '}
-            <button onClick={() => { setShowRegister(false); setError('') }}>
+            <button className="link" onClick={() => { setShowRegister(false); setError('') }}>
               Log in
             </button>
           </p>
         </div>
       ) : (
         <div>
-          <h2>Log in</h2>
+          <h1 className="title">Welcome</h1>
+          <p className="subtitle">Log in to keep your streak going.</p>
+
+          <label>Email</label>
           <input
             type="text"
-            placeholder="Email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
           <input
             type="password"
-            placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
-          <button onClick={handleLogin}>Log in</button>
-          {error && <p style={{ color: 'red' }}>{error}</p>}
-          <p>
-            Need an account?{' '}
-            <button onClick={() => { setShowRegister(true); setError('') }}>
-              Register
+          <button className="btn space" onClick={handleLogin}>Log in</button>
+          {error && <p className="error-text">{error}</p>}
+          <p className="center space muted">
+            New here?{' '}
+            <button className="link" onClick={() => { setShowRegister(true); setError('') }}>
+              Create an account
             </button>
           </p>
         </div>
