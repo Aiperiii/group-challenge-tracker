@@ -30,6 +30,7 @@ function App() {
   const [newChallengeGroupId, setNewChallengeGroupId] = useState('')
   const [selectedGroup, setSelectedGroup] = useState('')
   const [inviteCode, setInviteCode] = useState('')
+  const [newGroupName, setNewGroupName] = useState('')
 
   
   async function fetchMe(token) {
@@ -237,10 +238,7 @@ function App() {
       setError('Please enter a challenge name.')
       return
     }
-    if (!newChallengeGroupId) {
-      setError('Please choose a group.')
-      return
-    }
+    
     if (!newDurationDays || Number(newDurationDays) <= 0) {
       setError('Please enter a duration (a positive number of days).')
       return
@@ -264,7 +262,7 @@ function App() {
 
     try {
       const response = await fetch(
-        `http://localhost:8000/groups/${newChallengeGroupId}/challenges`,
+        `http://localhost:8000/groups/${selectedGroup.id}/challenges`,
         {
           method: 'POST',
           headers: {
@@ -351,6 +349,42 @@ function App() {
     }
   }
 
+  async function handleCreateGroup() {
+    setError('')
+    const token = localStorage.getItem('token')
+
+    if (!newGroupName) {
+      setError('Please enter a group name.')
+      return
+    }
+
+    try {
+      const response = await fetch('http://localhost:8000/groups', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + token,
+        },
+        body: JSON.stringify({ name: newGroupName }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        setError(
+          typeof data.detail === 'string' ? data.detail : 'Could not create group.'
+        )
+        return
+      }
+
+      // Success — refresh groups so the new one appears, and clear the field.
+      setError('')
+      setNewGroupName('')
+      await fetchGroupsAndChallenges(token)
+    } catch (err) {
+      setError('Could not reach the server.')
+    }
+  }
 
   // RETURN starts here
   return (
@@ -388,6 +422,16 @@ function App() {
             />
             <button onClick={handleJoinGroup}>Join</button>
             {error && <p style={{ color: 'red' }}>{error}</p>}
+
+            {/* Create a group */}
+            <h3>Create a group</h3>
+              <input
+                type="text"
+                placeholder="Group name"
+                value={newGroupName}
+                onChange={(e) => setNewGroupName(e.target.value)}
+              />
+              <button onClick={handleCreateGroup}>Create group</button>
           </div>
         ) : (
           // ---- INSIDE A GROUP (a group is selected) ----
