@@ -57,6 +57,7 @@ class GroupJoin(BaseModel):
 class MemberResponse(BaseModel):
     user_id : int 
     email : EmailStr
+    name : str
     joined_at : datetime
 
     class Config:

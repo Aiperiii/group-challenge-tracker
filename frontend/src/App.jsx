@@ -31,6 +31,8 @@ function App() {
   const [selectedGroup, setSelectedGroup] = useState('')
   const [inviteCode, setInviteCode] = useState('')
   const [newGroupName, setNewGroupName] = useState('')
+  const [groupMembers, setGroupMembers] = useState([])
+  const [groupTab, setGroupTab] = useState('challenges')   // 'challenges' or 'members'
 
   
   async function fetchMe(token) {
@@ -299,6 +301,7 @@ function App() {
   async function openGroup(group) {
     setSelectedGroup(group)
     setSelectedChallenge(null)   // clear any open challenge when switching groups
+    setGroupTab('challenges')     // reset to challenges tab
     const token = localStorage.getItem('token')
     try {
       const response = await fetch(
@@ -307,6 +310,7 @@ function App() {
       )
       const data = await response.json()
       setChallenges(data)   // now `challenges` holds ONLY this group's challenges
+      await fetchMembers(group.id)   // also load the group's members
     } catch (err) {
       setError('Could not load challenges for this group.')
     }
@@ -386,6 +390,27 @@ function App() {
     }
   }
 
+  async function fetchMembers(groupId) {
+    const token = localStorage.getItem('token')
+    try {
+      const response = await fetch(
+        `http://localhost:8000/groups/${groupId}/members`,
+        { headers: { 'Authorization': 'Bearer ' + token } }
+      )
+      const data = await response.json()
+      setGroupMembers(data)
+    } catch (err) {
+      setError('Could not load members.')
+    }
+  }
+
+  useEffect(() => {
+    const token = localStorage.getItem('token')
+    if (token) {
+      fetchMe(token)   // re-log-in using the stored token
+    }
+  }, [])
+
   // RETURN starts here
   return (
     <div>
@@ -442,7 +467,46 @@ function App() {
 
             <h2>{selectedGroup.name}</h2>
             <p>Invite code: {selectedGroup.invite_code}</p>
+            {/* Tabs */}
+            <div>
+                <button
+                  onClick={() => setGroupTab('challenges')}
+                  style={{
+                    backgroundColor: groupTab === 'challenges' ? '#059669' : '#eee',
+                    color: groupTab === 'challenges' ? 'white' : 'black',
+                    border: 'none', padding: '8px 16px', marginRight: '8px',
+                    borderRadius: '6px', cursor: 'pointer',
+                  }}
+                >
+                  Challenges
+                </button>
+                <button
+                  onClick={() => setGroupTab('members')}
+                  style={{
+                    backgroundColor: groupTab === 'members' ? '#059669' : '#eee',
+                    color: groupTab === 'members' ? 'white' : 'black',
+                    border: 'none', padding: '8px 16px',
+                    borderRadius: '6px', cursor: 'pointer',
+                  }}
+                >
+                  Members
+                </button>
+              </div>
 
+              {groupTab === 'members' ? (
+                // ---- MEMBERS LIST ----
+                <ul>
+                  {groupMembers.map((m) => (
+                    <li key={m.user_id}>{m.name || m.email}</li>
+                  ))}
+                </ul>
+              ) : (
+                // ---- CHALLENGES (your existing content) ----
+                <div>
+                  {/* your existing: create-challenge form + the {selectedChallenge ? ...} check-in/leaderboard + challenge list all go here */}
+                </div>
+              )}
+              
             {/* Create-challenge form (only when not viewing a challenge) */}
             {!selectedChallenge && (
               <div>

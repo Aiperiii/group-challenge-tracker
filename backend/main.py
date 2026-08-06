@@ -164,7 +164,7 @@ def list_members(group_id : int,
             .filter(GroupMember.group_id == group_id).all())
     
     return [
-    MemberResponse(user_id=user.id, email=user.email, joined_at=membership.joined_at)
+    MemberResponse(user_id=user.id, email=user.email,  name = user.name, joined_at=membership.joined_at)
     for membership, user in results
     ]
 
