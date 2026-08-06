@@ -29,9 +29,9 @@ function App() {
   const [newGoalValue, setNewGoalValue] = useState('')
   const [newChallengeGroupId, setNewChallengeGroupId] = useState('')
   const [selectedGroup, setSelectedGroup] = useState('')
+  const [inviteCode, setInviteCode] = useState('')
+
   
-
-
   async function fetchMe(token) {
     try {
       const response = await fetch('http://localhost:8000/me', {
@@ -314,6 +314,44 @@ function App() {
     }
   }
 
+
+  async function handleJoinGroup(){
+    setError('')
+    const token = localStorage.getItem('token')
+
+    if(!inviteCode){
+      setError('Please enter an invite code.')
+      return
+    }
+    try {
+      const response = await fetch('http://localhost:8000/groups/join', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + token,
+        },
+        body: JSON.stringify({ invite_code: inviteCode }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        setError(
+          typeof data.detail === 'string' ? data.detail : 'Could not join group.'
+        )
+        return
+      }
+
+      // Success — refresh groups so the new one appears, and clear the field.
+      setError('')
+      setInviteCode('')
+      await fetchGroupsAndChallenges(token)
+    } catch (err) {
+      setError('Could not reach the server.')
+    }
+  }
+
+
   // RETURN starts here
   return (
     <div>
@@ -341,6 +379,15 @@ function App() {
                 ))}
               </ul>
             )}
+            <h3>Join a group</h3>
+            <input
+              type="text"
+              placeholder="Enter invite code"
+              value={inviteCode}
+              onChange={(e) => setInviteCode(e.target.value)}
+            />
+            <button onClick={handleJoinGroup}>Join</button>
+            {error && <p style={{ color: 'red' }}>{error}</p>}
           </div>
         ) : (
           // ---- INSIDE A GROUP (a group is selected) ----
