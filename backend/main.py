@@ -274,6 +274,13 @@ async def checkin(challenge_id : int, check_in_data : CheckInCreate,
     now_utc = datetime.now(timezone.utc)
     today_local = local_date_of(now_utc, current_user.timezone)
 
+    # the challenge must have started (can't check in before the start date)
+    if today_local < challenge.start_date:
+        raise HTTPException(
+            status_code=400,
+            detail="This challenge hasn't started yet."
+        )
+
 
     existing_check_ins = db.query(CheckIn).filter(CheckIn.challenge_id == challenge_id, 
     CheckIn.user_id == current_user.id).all()
@@ -408,3 +415,36 @@ def my_groups(current_user : User = Depends(get_current_user), db : Session = De
 
 
 
+@app.get("/challenges/{challenge_id}/my-checkins")
+def my_checkins(challenge_id: int,
+    current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Return the current user's check-in history for a challenge (most recent first)."""
+
+    # the challenge must exist
+    challenge = db.query(Challenge).filter(Challenge.id == challenge_id).first()
+    if challenge is None:
+        raise HTTPException(status_code=404, detail="Challenge not found")
+
+    # the user must be a member of the challenge's group
+    membership = db.query(GroupMember).filter(
+        GroupMember.group_id == challenge.group_id,
+        GroupMember.user_id == current_user.id
+    ).first()
+    if membership is None:
+        raise HTTPException(status_code=403, detail="You are not a member of this group")
+
+    # get this user's check-ins for this challenge, newest first
+    check_ins = (db.query(CheckIn)
+        .filter(CheckIn.challenge_id == challenge_id, CheckIn.user_id == current_user.id)
+        .order_by(CheckIn.checked_in_at.desc())
+        .all())
+
+    # return date + value + note for each
+    return [
+        {
+            "date": local_date_of(ch.checked_in_at, current_user.timezone).isoformat(),
+            "value": ch.value,
+            "note": ch.note,
+        }
+        for ch in check_ins
+    ]
