@@ -1,8 +1,11 @@
 # Group Challenge Tracker
 
-A real-time group habit-and-challenge tracker with timezone-correct streaks and live leaderboards. Friends form a group, create shared challenges (like "30-Day Gym"), check in each day, and watch a **midnight reveal** push the updated leaderboard to everyone at once.
+A real-time group habit-and-challenge tracker with timezone-correct streaks and live leaderboards. Friends form a group, create shared challenges (like "30-Day Gym"), check in each day, and watch the leaderboard update live as everyone checks in — with each member's streak tracked in their own timezone.
 
-> **Status:** Backend complete (auth, groups, challenges, check-ins, streak engine, real-time reveal, concurrency handling). Frontend (React) in progress.
+**Demo video:** [Watch on YouTube]_(https://www.youtube.com/watch?v=APlLcFilvmI)_
+
+
+Full walkthrough: register, log in, create a group and challenges, check in across all three challenge types.
 
 ---
 
@@ -26,50 +29,23 @@ A real-time group habit-and-challenge tracker with timezone-correct streaks and 
 | Real-time | WebSockets |
 | Scheduling | APScheduler |
 | Auth | JWT (from scratch) + bcrypt |
-| Frontend | React (in progress) |
+| Frontend | React (Vite), plain CSS with design tokens |
 
 ---
 
 ## Architecture highlights
 
-These are the parts I'm most proud of, and where most of the engineering went:
+**Timezone-correct streaks.** Timestamps are stored in UTC and converted to each user's local timezone before comparing dates, so a late-night check-in counts for the right local day instead of silently breaking the streak.
 
-**Timezone-correct data model.** Every timestamp is stored in UTC (`TIMESTAMPTZ`, with the database connection pinned to UTC), and all day-boundary logic converts to each user's local timezone before comparing dates. This means a check-in at 11:30 PM in one timezone is correctly counted for *that* local day, not misfiled to the next UTC day — the subtle bug that would otherwise silently break streaks.
+**Authentication from scratch.** bcrypt hashing, JWT tokens with expiry and a pinned algorithm, a reusable route-protection dependency, and response schemas that act as allow-lists so password hashes can't leak.
 
-**Authentication built from scratch.** bcrypt password hashing (with per-password salts), JWT tokens with explicit expiry and a pinned signing algorithm, a reusable dependency for protecting routes, and anti–user-enumeration on login. Response schemas act as allow-lists so sensitive fields (like password hashes) can never leak.
+**A tested streak engine.** A pure, dependency-injected function with unit tests covering clean streaks, the grace period, breaks, gaps, and multiple timezones — computed on check-in and recalculated at midnight for decay.
 
-**A tested streak engine.** The streak calculation is a pure, dependency-injected function with a full unit-test suite covering clean streaks, the grace period, broken streaks, historical gaps, and multiple timezones. Streaks are computed on check-in and stored (compute-on-write), then recalculated at midnight to handle decay (a streak dropping to zero after a missed day).
+**Real-time leaderboards over WebSockets.** A connection manager broadcasts to authenticated, authorized per-group connections; every check-in pushes a fresh leaderboard, and the midnight job broadcasts recalculated standings.
 
-**Real-time reveal over WebSockets.** A connection manager tracks WebSocket connections per group and broadcasts updates to all of them. Connections are authenticated (via a query-parameter token, since browsers can't set headers on WebSockets) and authorized (group membership checked before the connection is accepted). Reconnecting clients are immediately caught up with the current leaderboard.
+**Concurrency-safe midnight job.** Row-level locking (`SELECT ... FOR UPDATE`) plus a unique constraint prevent a near-midnight check-in from racing the recalculation — verified with two concurrent database sessions.
 
-**Concurrency-safe midnight job.** A check-in near midnight can race the midnight recalculation — a read-modify-write race that could overwrite a valid streak. This is solved with row-level locking (`SELECT ... FOR UPDATE`) so the operations serialize instead of clobbering each other, plus a unique constraint to cover the insert-race case (since you can't lock a row that doesn't exist yet). The lock was verified empirically by forcing the race with two concurrent database sessions.
-
----
-
-## Project structure
-
-```
-group-challenge-tracker/
-├── backend/
-│   ├── main.py              # FastAPI app + all endpoints (HTTP + WebSocket)
-│   ├── models.py            # SQLAlchemy models (6 tables)
-│   ├── schemas.py           # Pydantic request/response schemas
-│   ├── database.py          # Engine, session factory, get_db dependency
-│   ├── auth.py              # Password hashing/verification
-│   ├── token_utils.py       # JWT creation + auth dependencies
-│   ├── streaks.py           # Streak calculation + storage (with row locking)
-│   ├── midnight.py          # Scheduled reveal job + leaderboard building
-│   ├── websocket_manager.py # WebSocket connection manager
-│   ├── utils.py             # Invite codes, timezone helpers
-│   ├── create_tables.py     # Creates database tables from the models
-│   ├── test_streaks.py      # Streak engine unit tests
-│   ├── test_lock.py         # Concurrency (row lock) demonstration test
-│   └── requirements.txt     # Python dependencies
-├── frontend/                # React app (in progress)
-└── docs/                    # Detailed weekly development recaps
-```
-
----
+**A custom frontend design system.** Plain CSS with design tokens (the whole theme in a handful of variables), reusable component classes, and a responsive mobile-to-two-column layout; the client validates for speed while the server enforces the rules.
 
 ## Running it locally
 
@@ -116,3 +92,10 @@ cd frontend
 npm install
 npm run dev
 ```
+---
+## What I'd build next
+
+- Delete/leave flows for challenges and groups (creator-only permissions, with cascade handling)
+- Client-side routing (React Router) for shareable URLs and browser navigation
+- A momentum/recommendation layer: smarter scoring and challenge suggestions
+
